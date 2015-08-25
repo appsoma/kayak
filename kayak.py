@@ -5,17 +5,44 @@ import signal
 import sys
 from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory
 from twisted.internet import reactor
-sys.path.append( "./pywelder" )
-import kafka_util
 sys.path.insert(0, "./pykafka")
 from pykafka import KafkaClient
 import pykafka.protocol
 
-kafka_util.setup_logging()
-brokers = kafka_util.get_brokers()
+
+def get_brokers():
+	zk = KazooClient(hosts=os.environ['ZOOKEEPER'], read_only=True)
+	zk.start()
+
+	broker_list = ""
+	children = zk.get_children( '/brokers/ids' )
+	for i in children:
+		data, stat = zk.get( '/brokers/ids/'+i )
+		data = json.loads( data )
+		if broker_list != "":
+			broker_list += ","
+		broker_list += data['host'].encode('utf8') + ":" + str(data['port'])
+
+	data, stat = zk.get( '/brokers/ids/0' )
+	zk.stop()
+	data = json.loads( data )
+	return broker_list
+
+def setup_logging():
+	root = logging.getLogger()
+	root.setLevel(logging.INFO)
+	ch = logging.StreamHandler(sys.stdout)
+	ch.setLevel(logging.INFO)
+	formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+	ch.setFormatter(formatter)
+	root.addHandler(ch)
+
+
+
+setup_logging()
+brokers = get_brokers()
+
 kafka = KafkaClient( hosts=brokers )
-
-
 
 kafka_threads = []
 
@@ -72,53 +99,14 @@ class MyServerProtocol(WebSocketServerProtocol):
 		print "ON INIT"
 		self.kafka_threads = {}
 
-	def onConnect(self, request):
-		print "ON CONNECT", request
+	def send( self, obj ):
+		self.sendMessage( json.dumps( obj ) )
 
-	def onOpen(self):
-		print "ON OPEN"
-		self.path = self.http_request_path
-		self.query = self.http_request_params
-
-	def onMessage(self, payload, isBinary):
-		print "Got Message"
-		comm = json.loads(payload)
-		handled = False
-		if "command" in comm:
-			print "Command=",comm["command"]
-		if 'topic' in comm:
-			topic_id = comm["topic"].encode("utf8")
-		if comm["command"] == "ping":
-			handled = True
-		if comm["command"] == "subscribe":
-			self.start_follow( topic_id )
-			handled = True
-		if comm["command"] == "unsubscribe":
-			self.stop_follow( topic_id )
-			handled = True
-		if comm["command"] == "history":
-			self.history( topic_id, comm["offset"], comm["count"] )
-			handled = True
-		if comm["command"] == "add":
-			topic = kafka.topics[topic_id]
-			producer = topic.get_producer()
-			producer.produce( [ json.dumps(comm["message"]) ] )
-			handled = True
-
-		if not handled:
-			self.sendMessage("{error:\"command not understood\"}")
-
-
-	def onClose(self, wasClean, code, reason):
-		print "ON CLOSE", wasClean, code, reason
-		for k,v in self.kafka_threads.items():
-			v.stop()
-
-	def start_follow(self,topic_id):
+	def subscribe(self,topic_id):
 		self.kafka_threads[topic_id] = KafkaThread( args=(self,topic_id) )
 		self.kafka_threads[topic_id].start()
 
-	def stop_follow(self,topic_id):
+	def unsubscribe(self,topic_id):
 		self.kafka_threads[topic_id].stop()
 
 	def history(self,topic_id,offset,count):
@@ -131,6 +119,50 @@ class MyServerProtocol(WebSocketServerProtocol):
 				self.sendMessage(message.value)
 			else:
 				break
+
+	def onConnect(self, request):
+		print "ON CONNECT", request
+
+	def onOpen(self):
+		print "ON OPEN"
+		self.path = self.http_request_path
+		self.query = self.http_request_params
+
+	def onMessage(self, payload, isBinary):
+		try:
+			print "Got Message"
+			comm = json.loads(payload)
+			handled = False
+			if "command" in comm:
+				print "Command=", comm["command"]
+			if 'topic' in comm:
+				topic_id = comm["topic"].encode("utf8")
+			if comm["command"] == "ping":
+				handled = True
+			if comm["command"] == "subscribe":
+				self.subscribe( topic_id )
+				handled = True
+			if comm["command"] == "unsubscribe":
+				self.unsubscribe( topic_id )
+				handled = True
+			if comm["command"] == "history":
+				self.history( topic_id, comm["offset"], comm["count"] )
+				handled = True
+			if comm["command"] == "add":
+				topic = kafka.topics[topic_id]
+				producer = topic.get_producer()
+				producer.produce( [ json.dumps(comm["message"]) ] )
+				handled = True
+
+			if not handled:
+				self.send( {'error':'command not understood'} )
+		except Exception as e:
+			self.send( {'error':str(e)} )
+
+	def onClose(self, wasClean, code, reason):
+		print "ON CLOSE", wasClean, code, reason
+		for k,v in self.kafka_threads.items():
+			v.stop()
 
 if __name__ == '__main__':
 	print "MAIN1"
