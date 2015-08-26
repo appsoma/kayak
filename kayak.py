@@ -41,20 +41,16 @@ def setup_logging():
 	ch.setFormatter(formatter)
 	root.addHandler(ch)
 
-
+consumer_group_id = "kayak"
 
 setup_logging()
 brokers = get_brokers()
 
 kafka = KafkaClient( hosts=brokers )
 
-kafka_threads = []
-
 class KafkaThread(threading.Thread):
 	def __init__(self, args):
 		print "CREATE THREAD", brokers
-		global kafka_threads
-		kafka_threads.append( self )
 		super(KafkaThread, self).__init__(args=args)
 		self.stop_request = False
 		self.topic_id = args[1].encode('utf8')
@@ -64,7 +60,7 @@ class KafkaThread(threading.Thread):
 
 		print "setup topic "+self.topic_id
 		self.topic = self.inside_thread_kafka.topics[self.topic_id]
-		self.consumer_group_id = "kafka_websocket"
+		self.consumer_group_id = consumer_group_id
 		print "create consumer group", self.consumer_group_id
 		self.consumer = self.topic.get_simple_consumer( self.consumer_group_id )
 
@@ -81,13 +77,19 @@ class KafkaThread(threading.Thread):
 		print "THREAD RUN"
 		while not self.stop_request:
 			try:
-				message = self.consumer.consume(block=True)
+				message = self.consumer.consume(block=False)
+					# I have to block=False here because otherwise when the websocket
+					# terminates and there are no more messages on the consumer then
+					# this thread will never die. There is no block_for_at_most type
+					# argument to the consume.
 				if message:
 					ret_message = {
 						'topic': self.topic_id,
 						'message': json.loads(message.value)
 					}
 					self.protocol.sendMessage( json.dumps(ret_message) )
+				else:
+					time.sleep( 0.1 )
 			except Exception as e:
 				print "SLEEP ON EXECPTION", e
 				time.sleep(0.1)
@@ -115,7 +117,7 @@ class MyServerProtocol(WebSocketServerProtocol):
 
 	def history(self,topic_id,offset,count):
 		topic = kafka.topics[topic_id]
-		consumer = topic.get_simple_consumer( "group1" )
+		consumer = topic.get_simple_consumer( consumer_group_id )
 		consumer.seek(offset,1)
 		while True:
 			message = consumer.consume(block=False)
@@ -165,19 +167,10 @@ class MyServerProtocol(WebSocketServerProtocol):
 
 	def onClose(self, wasClean, code, reason):
 		print "ON CLOSE", wasClean, code, reason
-		for k,v in self.kafka_threads.items():
-			v.stop()
+		for topic_id,thread in self.kafka_threads.items():
+			thread.stop()
 
 if __name__ == '__main__':
-	print "MAIN1"
-	def signal_handler(signal, frame):
-		global kafka_threads
-		for i in kafka_threads:
-			i.stop_request = True
-		reactor.stop()
-
-	signal.signal(signal.SIGINT, signal_handler)
-
 	headers = {
 		"Access-Control-Allow-Origin": "*"
 	}

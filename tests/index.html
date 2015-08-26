@@ -9,6 +9,7 @@
 		$(document).ready( function() {
 			var url = "wss://kayak.dev.reactorsecurity.net/";
 			console.log("Attempting to connect to "+url);
+			$("#is-connected").text( "NO" );
 			websocket = new WebSocket( url );
 
 			function send( obj ) {
@@ -16,6 +17,7 @@
 			}
 
 			websocket.onopen = function(evt) {
+				$("#is-connected").text( "YES" );
 				console.log( "Opened websocket for sending messages. Subscribing to '"+topic+"'" );
 				send({
 					command: "subscribe",
@@ -24,6 +26,7 @@
 			};
 
 			websocket.onclose = function(evt) {
+				$("#is-connected").text( "NO" );
 				console.log( "Websocket closed." );
 			};
 
@@ -44,10 +47,15 @@
 				send( { command:'add', topic:topic, message:{test:sendCount} }  )
 				sendCount += 1;
 			});
+			$("#disconnect").click( function() {
+				websocket.close();
+			});
 		});
 	</script>
 </head>
 <body>
+	Is connected: <span id="is-connected"></span><br/>
 	Received <span id="received"></span><br/>
-	<button id="send">Send message</button>
+	<button id="send">Send message</button><br/>
+	<button id="disconnect">Disconnect</button>
 </body>
