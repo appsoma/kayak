@@ -1,0 +1,53 @@
+<!doctype html>
+<head>
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap-theme.min.css">
+	<script src="https://code.jquery.com/jquery-2.1.4.js"></script>
+	<script type="text/javascript">
+		var topic = "test2";
+
+		$(document).ready( function() {
+			var url = "wss://kayak.dev.reactorsecurity.net/";
+			console.log("Attempting to connect to "+url);
+			websocket = new WebSocket( url );
+
+			function send( obj ) {
+				websocket.send( JSON.stringify(obj) );
+			}
+
+			websocket.onopen = function(evt) {
+				console.log( "Opened websocket for sending messages. Subscribing to '"+topic+"'" );
+				send({
+					command: "subscribe",
+					topic: topic
+				});
+			};
+
+			websocket.onclose = function(evt) {
+				console.log( "Websocket closed." );
+			};
+
+			var received = 0;
+			websocket.onmessage = function(evt) {
+				var data = JSON.parse( evt.data );
+				console.log( "got", data );
+				received += 1;
+				$("#received").text( received );
+			};
+
+			websocket.onerror = function(evt) {
+				console.log( "WEBSOCKET ERR", evt );
+			};
+
+			var sendCount = 0;
+			$("#send").click( function() {
+				send( { command:'add', topic:topic, message:{test:sendCount} }  )
+				sendCount += 1;
+			});
+		});
+	</script>
+</head>
+<body>
+	Received <span id="received"></span><br/>
+	<button id="send">Send message</button>
+</body>

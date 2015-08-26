@@ -1,16 +1,20 @@
+# coding=utf-8
 import json
 import time
 import threading
 import signal
 import sys
+import logging
+import os
+from kazoo.client import KazooClient
 from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory
 from twisted.internet import reactor
-sys.path.insert(0, "./pykafka")
+sys.path.insert(0, "/pykafka")
 from pykafka import KafkaClient
 import pykafka.protocol
 
-
 def get_brokers():
+	print "ZK", os.environ['ZOOKEEPER']
 	zk = KazooClient(hosts=os.environ['ZOOKEEPER'], read_only=True)
 	zk.start()
 

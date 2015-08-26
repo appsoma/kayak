@@ -16,6 +16,7 @@
 #		}
 #	],
 
+
 cat >/tmp/kayak_run.json <<EOL
 {
 	"id": "/kayak",
@@ -45,6 +46,11 @@ cat >/tmp/kayak_run.json <<EOL
 			{
 				"hostPath": "/mnt/data/kayak",
 				"containerPath": "/kayak",
+				"mode": "RO"
+			},
+			{
+				"hostPath": "/mnt/data/pykafka",
+				"containerPath": "/pykafka",
 				"mode": "RO"
 			},
 			{
