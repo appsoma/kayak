@@ -16,6 +16,11 @@
 #		}
 #	],
 
+if [ "$1" == "stop" ] || [ "$1" == "restart" ]; then
+	curl -H "Content-Type:application/json" -X DELETE http://localhost:8080/v2/apps/kayak
+fi
+
+if [ "$1" == "start" ] || [ "$1" == "restart" ]; then
 
 cat >/tmp/kayak_run.json <<EOL
 {
@@ -64,3 +69,5 @@ cat >/tmp/kayak_run.json <<EOL
 EOL
 # Note, I use localhost and the port here so that this code will be generic between then dev and stable clusters
 curl -H "Content-Type:application/json" -X POST --data @/tmp/kayak_run.json http://localhost:8080/v2/apps
+
+fi
